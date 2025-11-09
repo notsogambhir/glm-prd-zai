@@ -1,0 +1,346 @@
+// NBA OBE Portal Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  username    String   @unique
+  password    String
+  name        String
+  role        UserRole
+  collegeId   String?
+  departmentId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  college       College?       @relation(fields: [collegeId], references: [id])
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  managedPrograms Program[]    @relation("ProgramCoordinator")
+  assignedTeachers TeacherAssignment[] @relation("AssignedTeacher")
+  assignedPCs TeacherAssignment[] @relation("AssignedPC")
+  teacherCourses Course[]       @relation("CourseTeacher")
+  createdCourses Course[]       @relation("CourseCreator")
+  createdAssessments Assessment[] @relation("AssessmentCreator")
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  UNIVERSITY
+  DEPARTMENT
+  PC
+  TEACHER
+}
+
+// Academic Structure
+model College {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  programs   Program[]
+  departments Department[]
+  users      User[]
+
+  @@map("colleges")
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String
+  code        String
+  collegeId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  college College @relation(fields: [collegeId], references: [id])
+  users   User[]
+
+  @@map("departments")
+}
+
+model Program {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  collegeId   String
+  duration    Int      // in years
+  target      Float    @default(60.0) // target percentage for attainment
+  level1      Float    @default(40.0) // attainment threshold level 1
+  level2      Float    @default(60.0) // attainment threshold level 2
+  level3      Float    @default(80.0) // attainment threshold level 3
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  college      College     @relation(fields: [collegeId], references: [id])
+  batches      Batch[]
+  courses      Course[]
+  pos          ProgramOutcome[]
+  coordinator  User?       @relation("ProgramCoordinator", fields: [coordinatorId], references: [id])
+  coordinatorId String?
+
+  @@map("programs")
+}
+
+model Batch {
+  id        String   @id @default(cuid())
+  name      String
+  startYear Int
+  programId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  program  Program  @relation(fields: [programId], references: [id])
+  sections Section[]
+  students Student[]
+
+  @@map("batches")
+}
+
+model Section {
+  id       String   @id @default(cuid())
+  name     String
+  batchId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  batch      Batch       @relation(fields: [batchId], references: [id])
+  courses    Course[]
+  students   Student[]
+  assessments Assessment[]
+
+  @@map("sections")
+}
+
+// User Management Relations
+model TeacherAssignment {
+  id       String @id @default(cuid())
+  teacherId String
+  pcId     String
+  createdAt DateTime @default(now())
+
+  // Relations
+  teacher User @relation("AssignedTeacher", fields: [teacherId], references: [id])
+  pc      User @relation("AssignedPC", fields: [pcId], references: [id])
+
+  @@map("teacher_assignments")
+}
+
+// Student Management
+model Student {
+  id        String   @id @default(cuid())
+  rollNo    String   @unique
+  name      String
+  email     String?
+  status    StudentStatus @default(ACTIVE)
+  batchId   String
+  sectionId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  batch   Batch   @relation(fields: [batchId], references: [id])
+  section Section? @relation(fields: [sectionId], references: [id])
+  enrollments Enrollment[]
+  marks Mark[]
+
+  @@map("students")
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  studentId String
+  courseId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id])
+  course  Course  @relation(fields: [courseId], references: [id])
+
+  @@unique([studentId, courseId])
+  @@map("enrollments")
+}
+
+// Course Management
+model Course {
+  id           String       @id @default(cuid())
+  code         String
+  name         String
+  description  String?
+  credits      Int
+  programId    String
+  status       CourseStatus @default(FUTURE)
+  target       Float        @default(60.0)
+  level1       Float        @default(40.0)
+  level2       Float        @default(60.0)
+  level3       Float        @default(80.0)
+  creatorId    String
+  teacherId    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // Relations
+  program Program  @relation(fields: [programId], references: [id])
+  creator User     @relation("CourseCreator", fields: [creatorId], references: [id])
+  teacher User?    @relation("CourseTeacher", fields: [teacherId], references: [id])
+  sections Section[]
+  cos CourseOutcome[]
+  enrollments Enrollment[]
+  assessments Assessment[]
+
+  @@map("courses")
+}
+
+enum CourseStatus {
+  FUTURE
+  ACTIVE
+  COMPLETED
+}
+
+// Outcome Management
+model ProgramOutcome {
+  id          String   @id @default(cuid())
+  code        String
+  description String
+  programId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  program Program @relation(fields: [programId], references: [id])
+  mappings CoPoMapping[]
+
+  @@map("program_outcomes")
+}
+
+model CourseOutcome {
+  id          String   @id @default(cuid())
+  code        String
+  description String
+  courseId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  course   Course         @relation(fields: [courseId], references: [id])
+  mappings CoPoMapping[]
+  questions AssessmentQuestionCO[]
+
+  @@map("course_outcomes")
+}
+
+model CoPoMapping {
+  id      String @id @default(cuid())
+  coId    String
+  poId    String
+  level   Int    // 1, 2, or 3
+  createdAt DateTime @default(now())
+
+  // Relations
+  co CourseOutcome   @relation(fields: [coId], references: [id])
+  po ProgramOutcome  @relation(fields: [poId], references: [id])
+
+  @@unique([coId, poId])
+  @@map("copo_mappings")
+}
+
+// Assessment Management
+model Assessment {
+  id          String        @id @default(cuid())
+  name        String
+  type        AssessmentType
+  courseId    String
+  sectionId   String
+  creatorId   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  course    Course               @relation(fields: [courseId], references: [id])
+  section   Section              @relation(fields: [sectionId], references: [id])
+  creator   User                 @relation("AssessmentCreator", fields: [creatorId], references: [id])
+  questions AssessmentQuestion[]
+  marks     Mark[]
+
+  @@map("assessments")
+}
+
+enum AssessmentType {
+  INTERNAL
+  EXTERNAL
+}
+
+model AssessmentQuestion {
+  id           String   @id @default(cuid())
+  name         String
+  maxMarks     Float
+  assessmentId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id])
+  cos       AssessmentQuestionCO[]
+  marks     Mark[]
+
+  @@map("assessment_questions")
+}
+
+model AssessmentQuestionCO {
+  id                String @id @default(cuid())
+  questionId        String
+  coId              String
+  createdAt         DateTime @default(now())
+
+  // Relations
+  question AssessmentQuestion @relation(fields: [questionId], references: [id])
+  co       CourseOutcome      @relation(fields: [coId], references: [id])
+
+  @@unique([questionId, coId])
+  @@map("assessment_question_cos")
+}
+
+// Grading and Marks
+model Mark {
+  id           String   @id @default(cuid())
+  studentId    String
+  questionId   String
+  assessmentId String?
+  marks        Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  student    Student            @relation(fields: [studentId], references: [id])
+  question   AssessmentQuestion @relation(fields: [questionId], references: [id])
+  assessment Assessment?       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, questionId])
+  @@map("marks")
+}
